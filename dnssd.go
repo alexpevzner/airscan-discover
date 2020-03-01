@@ -17,6 +17,7 @@ import (
 	"github.com/holoplot/go-avahi"
 )
 
+// DNSSdDiscover performs DNS-SD discovery for scanner devices
 func DNSSdDiscover(out chan *Endpoint) {
 	conn, err := dbus.SystemBus()
 	if err != nil {
