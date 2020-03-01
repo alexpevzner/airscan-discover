@@ -17,13 +17,18 @@ func main() {
 	t := time.NewTimer(2500 * time.Millisecond)
 
 	go DNSSdDiscover(c)
+	go WSSDDiscover(c)
 
 	fmt.Printf("[devices]\n")
 loop:
 	for {
 		select {
 		case endpoint := <-c:
-			fmt.Printf("  %q = %s\n", endpoint.Name, endpoint.URL)
+			line := fmt.Sprintf("%q = %s", endpoint.Name, endpoint.URL)
+			if endpoint.Proto != "" {
+				line += ", " + endpoint.Proto
+			}
+			fmt.Printf("  %s\n", line)
 		case <-t.C:
 			break loop
 		}

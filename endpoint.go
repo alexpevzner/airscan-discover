@@ -9,6 +9,7 @@ package main
 
 // Endpoint represents scanner endpoint
 type Endpoint struct {
-	Name string // Device name
-	URL  string // Endpoint URL
+	Proto string // Protocol name
+	Name  string // Device name
+	URL   string // Endpoint URL
 }
