@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -104,17 +105,20 @@ func IfAddrs() []*net.UDPAddr {
 // Get/GetResponse messages
 //
 // On success, it builds and returns a device endpoint
-func getMetadata(address, xaddr string) *Endpoint {
+func getMetadata(log *LogMessage, address, xaddr string) *Endpoint {
 	u, err := uuid.NewRandom()
 	LogCheck(err)
 
 	msg := fmt.Sprintf(getMetadataTemplate, u, address)
 
 	// Send Get request
+	log.Debug("requesting a metadata")
+
 	resp, err := http.Post(xaddr, "application/soap+xml; charset=utf-8",
 		bytes.NewBuffer(([]byte)(msg)))
 
 	if err != nil {
+		log.Debug("HTTP: %s", err)
 		return nil
 	}
 
@@ -128,6 +132,9 @@ func getMetadata(address, xaddr string) *Endpoint {
 	for {
 		token, err := decoder.Token()
 		if err != nil {
+			if err != io.EOF {
+				log.Debug("XML: %s", err)
+			}
 			break
 		}
 
@@ -150,6 +157,12 @@ func getMetadata(address, xaddr string) *Endpoint {
 		}
 
 	}
+
+	// Write debug messages
+	log.Debug("metadata response parameters:")
+	log.Debug("  action:       %s", action)
+	log.Debug("  manufacturer: %s", manufacturer)
+	log.Debug("  model:        %s", model)
 
 	// Check results
 	switch action {
@@ -175,7 +188,7 @@ func getMetadata(address, xaddr string) *Endpoint {
 }
 
 // handleUDPMessage handles received UDP message
-func handleUDPMessage(msg []byte, outchan chan *Endpoint) {
+func handleUDPMessage(log *LogMessage, msg []byte, outchan chan *Endpoint) {
 	var name, text string
 	var action, address, types string
 	var xaddrs []string
@@ -185,6 +198,9 @@ func handleUDPMessage(msg []byte, outchan chan *Endpoint) {
 	for {
 		token, err := decoder.Token()
 		if err != nil {
+			if err != io.EOF {
+				log.Debug("XML: %s", err)
+			}
 			break
 		}
 
@@ -209,6 +225,13 @@ func handleUDPMessage(msg []byte, outchan chan *Endpoint) {
 		}
 
 	}
+
+	// Write debug messages
+	log.Debug("message parameters:")
+	log.Debug("  action:  %s", action)
+	log.Debug("  address: %s", address)
+	log.Debug("  types:   %s", types)
+	log.Debug("  xaddrs:  %s", xaddrs)
 
 	// Check results
 	switch action {
@@ -243,20 +266,24 @@ func handleUDPMessage(msg []byte, outchan chan *Endpoint) {
 	}
 
 	for _, xaddr := range xaddrs {
-		endpoint := getMetadata(address, xaddr)
+		endpoint := getMetadata(log, address, xaddr)
 		if endpoint != nil {
 			outchan <- endpoint
 		}
 	}
+
+	log.Commit()
 }
 
 // recvUDPMessages receives and handles UDP messages
 func recvUDPMessages(conn *net.UDPConn, outchan chan *Endpoint) {
 	for {
 		buf := make([]byte, 32768)
-		n, _, _ := conn.ReadFromUDP(buf)
+		n, from, _ := conn.ReadFromUDP(buf)
 		if n > 0 {
-			handleUDPMessage(buf[:n], outchan)
+			LogDebug("%s: UDP message received", from)
+			log := LogBegin(fmt.Sprintf("%s", from))
+			handleUDPMessage(log, buf[:n], outchan)
 		}
 	}
 }
@@ -266,6 +293,11 @@ func WSSDDiscover(outchan chan *Endpoint) {
 	var conns []*net.UDPConn
 
 	// Create sockets, one per interface
+	LogDebug("Interface addresses:")
+	for _, addr := range IfAddrs() {
+		LogDebug("  %s", addr.IP)
+	}
+
 	for _, addr := range IfAddrs() {
 		ip4 := addr.IP.To4() != nil
 		if !ip4 {
