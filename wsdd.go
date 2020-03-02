@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,7 +42,10 @@ var wsddNsMap = map[string]string{
 }
 
 // wsddFound contains a set of already discovered devices
-var wsddFound = map[string]struct{}{}
+var (
+	wsddFound      = map[string]struct{}{}
+	wsddFoundMutex sync.Mutex
+)
 
 // probe represents a Probe message template
 const probeTemplate = `<?xml version="1.0" ?>
@@ -227,11 +231,16 @@ func handleUDPMessage(msg []byte, outchan chan *Endpoint) {
 	}
 
 	// Check for duplicates
-	if _, found := wsddFound[address]; found {
+	wsddFoundMutex.Lock()
+	_, found := wsddFound[address]
+	if !found {
+		wsddFound[address] = struct{}{}
+	}
+	wsddFoundMutex.Unlock()
+
+	if found {
 		return
 	}
-
-	wsddFound[address] = struct{}{}
 
 	for _, xaddr := range xaddrs {
 		endpoint := getMetadata(address, xaddr)
