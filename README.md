@@ -8,7 +8,7 @@ backend.
 
 Assuming you have a Go compiler, execute the following command:
 
-    go get github.com/alexpevzner/airscan-discover
+    go get -u github.com/alexpevzner/airscan-discover
 
 It will download everything it need, build an executable and save it to `$HOME/go/bin/airscan-discover`
 
