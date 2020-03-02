@@ -10,7 +10,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"net"
 
 	"github.com/godbus/dbus/v5"
@@ -21,18 +20,18 @@ import (
 func DNSSdDiscover(out chan *Endpoint) {
 	conn, err := dbus.SystemBus()
 	if err != nil {
-		log.Fatal("Cannot get system bus")
+		LogFatal("Cannot get system bus")
 	}
 
 	server, err := avahi.ServerNew(conn)
 	if err != nil {
-		log.Fatal("Avahi new failed")
+		LogFatal("Avahi new failed")
 	}
 
 	sb, err := server.ServiceBrowserNew(avahi.InterfaceUnspec,
 		avahi.ProtoUnspec, "_uscan._tcp", "local", 0)
 	if err != nil {
-		log.Fatal("ServiceBrowserNew() failed", err.Error())
+		LogFatal("ServiceBrowserNew() failed: %s", err.Error())
 	}
 
 	for {

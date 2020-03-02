@@ -12,6 +12,9 @@ import (
 	"os"
 )
 
+// Debug enables or disables debugging
+var Debug = false
+
 // LogCheck terminates a program, if err != nil
 func LogCheck(err error) {
 	if err != nil {
@@ -19,13 +22,20 @@ func LogCheck(err error) {
 	}
 }
 
-// LogFatal writes a message and terminates a program
+// LogFatal writes an error message and terminates a program
 func LogFatal(format string, args ...interface{}) {
-	println(fmt.Sprintf(format, args...))
+	LogError(format, args...)
 	os.Exit(1)
+}
+
+// LogError writes an error message
+func LogError(format string, args ...interface{}) {
+	os.Stdout.Write([]byte(fmt.Sprintf(format, args...) + "\n"))
 }
 
 // LogDebug writes a message
 func LogDebug(format string, args ...interface{}) {
-	println(fmt.Sprintf(format, args...))
+	if Debug {
+		os.Stdout.Write([]byte(fmt.Sprintf(format, args...) + "\n"))
+	}
 }
