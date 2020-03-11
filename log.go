@@ -63,7 +63,7 @@ func (m *LogMessage) Debug(format string, args ...interface{}) *LogMessage {
 }
 
 // Commit the message to the log
-func (m LogMessage) Commit() {
+func (m *LogMessage) Commit() {
 	var buf bytes.Buffer
 	for _, l := range m.lines {
 		if m.prefix != "" {
