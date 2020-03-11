@@ -195,6 +195,7 @@ func handleUDPMessage(log *LogMessage, msg []byte, outchan chan *Endpoint) {
 
 	// Decode the message
 	for _, elem := range elements {
+		LogDebug("%s %s", elem.Path, elem.Text)
 		switch elem.Path {
 		case "/s:Envelope/s:Header/a:Action":
 			action = elem.Text
@@ -209,30 +210,10 @@ func handleUDPMessage(log *LogMessage, msg []byte, outchan chan *Endpoint) {
 
 	// Write debug messages
 	log.Debug("message parameters:")
-	log.Debug("  action:  %s", action)
-	log.Debug("  address: %s", address)
-	log.Debug("  types:   %s", types)
-	log.Debug("  xaddrs:  %s", xaddrs)
-
-	// Check results
-	switch action {
-	case "http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches",
-		"https://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches":
-	default:
-		return
-	}
-
-	if len(xaddrs) == 0 {
-		return
-	}
-
-	if strings.Index(types, "ScanDeviceType") < 0 {
-		return
-	}
-
-	if address == "" {
-		return
-	}
+	log.Debug("  action:  %q", action)
+	log.Debug("  address: %q", address)
+	log.Debug("  types:   %q", types)
+	log.Debug("  xaddrs:  %q", xaddrs)
 
 	// Check for duplicates
 	wsddFoundMutex.Lock()
@@ -246,14 +227,38 @@ func handleUDPMessage(log *LogMessage, msg []byte, outchan chan *Endpoint) {
 		return
 	}
 
+	// Check results
+	defer log.Commit()
+
+	switch action {
+	case "http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches",
+		"https://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches":
+	default:
+		log.Debug("message ignored: unknown action")
+		return
+	}
+
+	if len(xaddrs) == 0 {
+		log.Debug("message ignored: no xaddrs")
+		return
+	}
+
+	if strings.Index(types, "ScanDeviceType") < 0 {
+		log.Debug("message ignored: not a scanner")
+		return
+	}
+
+	if address == "" {
+		log.Debug("message ignored: no endpoint address")
+		return
+	}
+
 	for _, xaddr := range xaddrs {
 		endpoint := getMetadata(log, address, xaddr)
 		if endpoint != nil {
 			outchan <- endpoint
 		}
 	}
-
-	log.Commit()
 }
 
 // recvUDPMessages receives and handles UDP messages
