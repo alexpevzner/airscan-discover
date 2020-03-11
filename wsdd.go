@@ -9,9 +9,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/xml"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -40,6 +39,8 @@ var wsddNsMap = map[string]string{
 	"https://schemas.xmlsoap.org/ws/2004/08/addressing": "a",
 	"http://schemas.xmlsoap.org/ws/2006/02/devprof":     "devprof",
 	"https://schemas.xmlsoap.org/ws/2006/02/devprof":    "devprof",
+	"http://schemas.xmlsoap.org/ws/2004/09/mex":         "mex",
+	"https://schemas.xmlsoap.org/ws/2004/09/mex":        "mex",
 }
 
 // wsddFound contains a set of already discovered devices
@@ -122,40 +123,33 @@ func getMetadata(log *LogMessage, address, xaddr string) *Endpoint {
 		return nil
 	}
 
-	defer resp.Body.Close()
+	// Load response body
+	response, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		log.Debug("HTTP: %s", err)
+		return nil
+	}
 
-	// Parse response
-	var name, text string
+	// Parse response XML
+	elements, err := XMLDecode(wsddNsMap, bytes.NewBuffer(response))
+	if err != nil {
+		log.Debug("XML: %s", err)
+		return nil
+	}
+
+	// Decode response
 	var action, manufacturer, model string
 
-	decoder := xml.NewDecoder(resp.Body)
-	for {
-		token, err := decoder.Token()
-		if err != nil {
-			if err != io.EOF {
-				log.Debug("XML: %s", err)
-			}
-			break
+	for _, elem := range elements {
+		switch elem.Path {
+		case "/s:Envelope/s:Header/a:Action":
+			action = elem.Text
+		case "/s:Envelope/s:Body/mex:Metadata/mex:MetadataSection/devprof:ThisModel/devprof:Manufacturer":
+			manufacturer = elem.Text
+		case "/s:Envelope/s:Body/mex:Metadata/mex:MetadataSection/devprof:ThisModel/devprof:ModelName":
+			model = elem.Text
 		}
-
-		switch t := token.(type) {
-		case xml.StartElement:
-			name = wsddNsMap[t.Name.Space] + ":" + t.Name.Local
-		case xml.CharData:
-			text = string(bytes.TrimSpace(t))
-
-			if text != "" {
-				switch name {
-				case "a:Action":
-					action = text
-				case "devprof:Manufacturer":
-					manufacturer = text
-				case "devprof:ModelName":
-					model = text
-				}
-			}
-		}
-
 	}
 
 	// Write debug messages
@@ -189,41 +183,28 @@ func getMetadata(log *LogMessage, address, xaddr string) *Endpoint {
 
 // handleUDPMessage handles received UDP message
 func handleUDPMessage(log *LogMessage, msg []byte, outchan chan *Endpoint) {
-	var name, text string
 	var action, address, types string
 	var xaddrs []string
 
 	// Parse XML
-	decoder := xml.NewDecoder(bytes.NewBuffer(msg))
-	for {
-		token, err := decoder.Token()
-		if err != nil {
-			if err != io.EOF {
-				log.Debug("XML: %s", err)
-			}
-			break
+	elements, err := XMLDecode(wsddNsMap, bytes.NewBuffer(msg))
+	if err != nil {
+		log.Debug("XML: %s", err)
+		return
+	}
+
+	// Decode the message
+	for _, elem := range elements {
+		switch elem.Path {
+		case "/s:Envelope/s:Header/a:Action":
+			action = elem.Text
+		case "/s:Envelope/s:Body/d:ProbeMatches/d:ProbeMatch/d:Types":
+			types = elem.Text
+		case "/s:Envelope/s:Body/d:ProbeMatches/d:ProbeMatch/d:XAddrs":
+			xaddrs = append(xaddrs, elem.Text)
+		case "/s:Envelope/s:Body/d:ProbeMatches/d:ProbeMatch/a:EndpointReference/a:Address":
+			address = elem.Text
 		}
-
-		switch t := token.(type) {
-		case xml.StartElement:
-			name = wsddNsMap[t.Name.Space] + ":" + t.Name.Local
-		case xml.CharData:
-			text = string(bytes.TrimSpace(t))
-
-			if text != "" {
-				switch name {
-				case "a:Action":
-					action = text
-				case "a:Address":
-					address = text
-				case "d:XAddrs":
-					xaddrs = append(xaddrs, text)
-				case "d:Types":
-					types = text
-				}
-			}
-		}
-
 	}
 
 	// Write debug messages
@@ -277,13 +258,16 @@ func handleUDPMessage(log *LogMessage, msg []byte, outchan chan *Endpoint) {
 
 // recvUDPMessages receives and handles UDP messages
 func recvUDPMessages(conn *net.UDPConn, outchan chan *Endpoint) {
+	buf := make([]byte, 32768)
+
 	for {
-		buf := make([]byte, 32768)
 		n, from, _ := conn.ReadFromUDP(buf)
 		if n > 0 {
+			msg := buf[:n]
+
 			LogDebug("%s: UDP message received", from)
 			log := LogBegin(fmt.Sprintf("%s", from))
-			handleUDPMessage(log, buf[:n], outchan)
+			handleUDPMessage(log, msg, outchan)
 		}
 	}
 }
