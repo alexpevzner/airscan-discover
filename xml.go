@@ -15,20 +15,26 @@ import (
 
 type XMLElement struct {
 	Path, Text string
+	Parent     *XMLElement
+	Children   []*XMLElement
 }
 
-// XMLDecode parses XML document, and represents it as a sequence of
-// Path/Text pairs, where Path is a full path to the element, starting
-// from root, and Text is the XML element body, stripped from leading
-// and trailing space. Elements with empty body text are not included
-// into this sequence. Namespace prefixes are rewritten according to
-// the 'ns' map. Full namespace URL used as map index, and value that
-// corresponds to the index replaced with map value. If URL is not
-// found in the map, prefix replaced with "-" string
-func XMLDecode(ns map[string]string, in io.Reader) ([]XMLElement, error) {
-	var elements []XMLElement
+// XMLDecode parses XML document, and represents it as a linear
+// sequence of XML elements
+//
+// Each element has a Path, which is a full path to the element,
+// starting from root, Text, which is XML element body, stripped
+// from leading and trailing space, and Children, which includes
+// its direct children, children of children and so on.
+//
+// Namespace prefixes are rewritten according to the 'ns' map.
+// Full namespace URL used as map index, and value that corresponds
+// to the index replaced with map value. If URL is not found in the
+// map, prefix replaced with "-" string
+func XMLDecode(ns map[string]string, in io.Reader) ([]*XMLElement, error) {
+	var elements []*XMLElement
+	var elem *XMLElement
 	var path bytes.Buffer
-	var lenStack []int
 
 	decoder := xml.NewDecoder(in)
 	for {
@@ -42,8 +48,6 @@ func XMLDecode(ns map[string]string, in io.Reader) ([]XMLElement, error) {
 
 		switch t := token.(type) {
 		case xml.StartElement:
-			lenStack = append(lenStack, path.Len())
-
 			prefix, ok := ns[t.Name.Space]
 			if !ok {
 				prefix = "-"
@@ -53,15 +57,27 @@ func XMLDecode(ns map[string]string, in io.Reader) ([]XMLElement, error) {
 			path.WriteByte(':')
 			path.WriteString(t.Name.Local)
 
+			elem = &XMLElement{
+				Path:   path.String(),
+				Parent: elem,
+			}
+			elements = append(elements, elem)
+
+			for p := elem.Parent; p != nil; p = p.Parent {
+				p.Children = append(p.Children, elem)
+			}
+
 		case xml.EndElement:
-			last := len(lenStack) - 1
-			path.Truncate(lenStack[last])
-			lenStack = lenStack[:last]
+			elem = elem.Parent
+			if elem != nil {
+				path.Truncate(len(elem.Path))
+			} else {
+				path.Truncate(0)
+			}
 
 		case xml.CharData:
-			text := string(bytes.TrimSpace(t))
-			if text != "" {
-				elements = append(elements, XMLElement{path.String(), text})
+			if elem != nil {
+				elem.Text = string(bytes.TrimSpace(t))
 			}
 		}
 	}
