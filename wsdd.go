@@ -80,6 +80,20 @@ const getMetadataTemplate = `<?xml version="1.0" ?>
 </s:Envelope>
 `
 
+// Check if address is already known. If save is true, it will
+// be added to the table of already known addresses
+func alreadyKnown(address string, save bool) bool {
+	wsddFoundMutex.Lock()
+	defer wsddFoundMutex.Unlock()
+
+	_, found := wsddFound[address]
+	if !found && save {
+		wsddFound[address] = struct{}{}
+	}
+
+	return found
+}
+
 // ifAddrs returns slice of addresses of all network interfaces
 func ifAddrs() []*net.UDPAddr {
 	var addrs []*net.UDPAddr
@@ -301,6 +315,12 @@ func handleUDPMessage(log *LogMessage, msg []byte, zone string, outchan chan End
 		}
 	}
 
+	// Check for duplicates
+	if alreadyKnown(address, false) {
+		log.Debug("message ignored: %s already known", address)
+		return
+	}
+
 	// Write debug messages
 	log.Debug("message parameters:")
 	log.Debug("  action:  %q", action)
@@ -308,21 +328,7 @@ func handleUDPMessage(log *LogMessage, msg []byte, zone string, outchan chan End
 	log.Debug("  types:   %q", types)
 	log.Debug("  xaddrs:  %q", xaddrs)
 
-	// Check for duplicates
-	wsddFoundMutex.Lock()
-	_, found := wsddFound[address]
-	if !found {
-		wsddFound[address] = struct{}{}
-	}
-	wsddFoundMutex.Unlock()
-
-	if found {
-		return
-	}
-
 	// Check results
-	defer log.Commit()
-
 	switch action {
 	case "http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches",
 		"https://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches":
@@ -354,6 +360,9 @@ func handleUDPMessage(log *LogMessage, msg []byte, zone string, outchan chan End
 		}
 	}
 
+	// Update table of already known addresses
+	alreadyKnown(address, true)
+
 	for endpoint := range endpoints {
 		url, err := fixIpv6URLZone(endpoint.URL, zone)
 		if err != nil {
@@ -377,6 +386,7 @@ func recvUDPMessages(conn *net.UDPConn, zone string, outchan chan Endpoint) {
 			LogDebug("%s: UDP message received", from)
 			log := LogBegin(fmt.Sprintf("%s", from))
 			handleUDPMessage(log, msg, zone, outchan)
+			log.Commit()
 		}
 	}
 }
