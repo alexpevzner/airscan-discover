@@ -43,10 +43,10 @@ func main() {
 	}
 
 	// Perform a discovery
-	c := make(chan *Endpoint)
+	c := make(chan Endpoint)
 	t := time.NewTimer(2500 * time.Millisecond)
 
-	var endpoints []*Endpoint
+	var endpoints []Endpoint
 
 	go DNSSdDiscover(c)
 	go WSSDDiscover(c)

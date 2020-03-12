@@ -17,7 +17,7 @@ import (
 )
 
 // DNSSdDiscover performs DNS-SD discovery for scanner devices
-func DNSSdDiscover(out chan *Endpoint) {
+func DNSSdDiscover(out chan Endpoint) {
 	conn, err := dbus.SystemBus()
 	if err != nil {
 		LogFatal("Cannot get system bus")
@@ -49,7 +49,7 @@ func DNSSdDiscover(out chan *Endpoint) {
 				continue
 			}
 
-			endpoint := &Endpoint{
+			endpoint := Endpoint{
 				Name: service.Name,
 			}
 

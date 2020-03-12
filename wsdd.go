@@ -31,16 +31,18 @@ var (
 // wsddNsMap maps WS-Discovery XML namespaces into short prefixes,
 // convenient to compare
 var wsddNsMap = map[string]string{
-	"http://www.w3.org/2003/05/soap-envelope":           "s",
-	"https://www.w3.org/2003/05/soap-envelope":          "s",
-	"http://schemas.xmlsoap.org/ws/2005/04/discovery":   "d",
-	"https://schemas.xmlsoap.org/ws/2005/04/discovery":  "d",
-	"http://schemas.xmlsoap.org/ws/2004/08/addressing":  "a",
-	"https://schemas.xmlsoap.org/ws/2004/08/addressing": "a",
-	"http://schemas.xmlsoap.org/ws/2006/02/devprof":     "devprof",
-	"https://schemas.xmlsoap.org/ws/2006/02/devprof":    "devprof",
-	"http://schemas.xmlsoap.org/ws/2004/09/mex":         "mex",
-	"https://schemas.xmlsoap.org/ws/2004/09/mex":        "mex",
+	"http://www.w3.org/2003/05/soap-envelope":            "s",
+	"https://www.w3.org/2003/05/soap-envelope":           "s",
+	"http://schemas.xmlsoap.org/ws/2005/04/discovery":    "d",
+	"https://schemas.xmlsoap.org/ws/2005/04/discovery":   "d",
+	"http://schemas.xmlsoap.org/ws/2004/08/addressing":   "a",
+	"https://schemas.xmlsoap.org/ws/2004/08/addressing":  "a",
+	"http://schemas.xmlsoap.org/ws/2006/02/devprof":      "devprof",
+	"https://schemas.xmlsoap.org/ws/2006/02/devprof":     "devprof",
+	"http://schemas.xmlsoap.org/ws/2004/09/mex":          "mex",
+	"https://schemas.xmlsoap.org/ws/2004/09/mex":         "mex",
+	"http://schemas.microsoft.com/windows/pnpx/2005/10":  "pnpx",
+	"https://schemas.microsoft.com/windows/pnpx/2005/10": "pnpx",
 }
 
 // wsddFound contains a set of already discovered devices
@@ -102,11 +104,45 @@ func IfAddrs() []*net.UDPAddr {
 	return addrs
 }
 
+// parseHosted parses devprof:Hosted section of the device metadata:
+//   <devprof:Hosted>
+//     <a:EndpointReference>
+//       <a:Address>http://192.168.1.102:5358/WSDScanner</a:Address>
+//     </addressing:EndpointReference>
+//     <devprof:Types>scan:ScannerServiceType</devprof:Types>
+//     <devprof:ServiceId>uri:4509a320-00a0-008f-00b6-002507510eca/WSDScanner</devprof:ServiceId>
+//     <pnpx:CompatibleId>http://schemas.microsoft.com/windows/2006/08/wdp/scan/ScannerServiceType</pnpx:CompatibleId>
+//     <pnpx:HardwareId>VEN_0103&amp;DEV_069D</pnpx:HardwareId>
+//   </devprof:Hosted>
+//
+// It ignores all endpoints except ScannerServiceType, extracts endpoint
+// URLs and returns them as slice of strings
+func parseHosted(elements []*XMLElement) []string {
+	var types string
+	var urls []string
+
+	for _, elem := range elements {
+		LogDebug("H: %s %s", elem.Path, elem.Text)
+		switch elem.Path {
+		case "/s:Envelope/s:Body/mex:Metadata/mex:MetadataSection/devprof:Relationship/devprof:Hosted/devprof:Types":
+			types = elem.Text
+		case "/s:Envelope/s:Body/mex:Metadata/mex:MetadataSection/devprof:Relationship/devprof:Hosted/a:EndpointReference/a:Address":
+			urls = append(urls, elem.Text)
+		}
+	}
+
+	if strings.Index(types, "ScannerServiceType") < 0 {
+		return nil
+	}
+
+	return urls
+}
+
 // getMetadata requests a device metadata, usung WD-Discovery
 // Get/GetResponse messages
 //
 // On success, it builds and returns a device endpoint
-func getMetadata(log *LogMessage, address, xaddr string) *Endpoint {
+func getMetadata(log *LogMessage, address, xaddr string) []Endpoint {
 	u, err := uuid.NewRandom()
 	LogCheck(err)
 
@@ -140,6 +176,7 @@ func getMetadata(log *LogMessage, address, xaddr string) *Endpoint {
 
 	// Decode response
 	var action, manufacturer, model string
+	var urls []string
 
 	for _, elem := range elements {
 		switch elem.Path {
@@ -149,40 +186,54 @@ func getMetadata(log *LogMessage, address, xaddr string) *Endpoint {
 			manufacturer = elem.Text
 		case "/s:Envelope/s:Body/mex:Metadata/mex:MetadataSection/devprof:ThisModel/devprof:ModelName":
 			model = elem.Text
+		case "/s:Envelope/s:Body/mex:Metadata/mex:MetadataSection/devprof:Relationship/devprof:Hosted":
+			urls = append(urls, parseHosted(elem.Children)...)
 		}
 	}
 
 	// Write debug messages
 	log.Debug("metadata response parameters:")
-	log.Debug("  action:       %s", action)
-	log.Debug("  manufacturer: %s", manufacturer)
-	log.Debug("  model:        %s", model)
+	log.Debug("  action:       %q", action)
+	log.Debug("  manufacturer: %q", manufacturer)
+	log.Debug("  model:        %q", model)
+	log.Debug("  urls:         %q", urls)
 
 	// Check results
 	switch action {
 	case "http://schemas.xmlsoap.org/ws/2004/09/transfer/GetResponse",
 		"https://schemas.xmlsoap.org/ws/2004/09/transfer/GetResponse":
 	default:
+		log.Debug("metadata ignored: unknown action")
 		return nil
 	}
 
 	if model == "" && manufacturer == "" {
+		log.Debug("metadata ignored: no model or manufacturer")
 		return nil
 	}
 
-	// Return device endpoint
-	endpoint := &Endpoint{Proto: "wsd", URL: xaddr}
-	if manufacturer == "" {
-		endpoint.Name = model
-	} else {
-		endpoint.Name = manufacturer + " " + model
+	if len(urls) == 0 {
+		log.Debug("metadata ignored: no scanner URLs")
+		return nil
 	}
 
-	return endpoint
+	// Return discovered endpoints
+	var endpoints []Endpoint
+
+	if manufacturer != "" {
+		model = manufacturer + " " + model
+	}
+
+	for _, url := range urls {
+		endpoint := Endpoint{Proto: "wsd", Name: model, URL: url}
+		endpoints = append(endpoints, endpoint)
+	}
+
+	return endpoints
 }
 
 // handleUDPMessage handles received UDP message
-func handleUDPMessage(log *LogMessage, msg []byte, outchan chan *Endpoint) {
+func handleUDPMessage(log *LogMessage, msg []byte, outchan chan Endpoint) {
 	var action, address, types string
 	var xaddrs []string
 
@@ -195,7 +246,6 @@ func handleUDPMessage(log *LogMessage, msg []byte, outchan chan *Endpoint) {
 
 	// Decode the message
 	for _, elem := range elements {
-		LogDebug("%s %s", elem.Path, elem.Text)
 		switch elem.Path {
 		case "/s:Envelope/s:Header/a:Action":
 			action = elem.Text
@@ -253,16 +303,21 @@ func handleUDPMessage(log *LogMessage, msg []byte, outchan chan *Endpoint) {
 		return
 	}
 
+	endpoints := make(map[Endpoint]struct{})
 	for _, xaddr := range xaddrs {
-		endpoint := getMetadata(log, address, xaddr)
-		if endpoint != nil {
-			outchan <- endpoint
+		epp := getMetadata(log, address, xaddr)
+		for _, endpoint := range epp {
+			endpoints[endpoint] = struct{}{}
 		}
+	}
+
+	for endpoint := range endpoints {
+		outchan <- endpoint
 	}
 }
 
 // recvUDPMessages receives and handles UDP messages
-func recvUDPMessages(conn *net.UDPConn, outchan chan *Endpoint) {
+func recvUDPMessages(conn *net.UDPConn, outchan chan Endpoint) {
 	buf := make([]byte, 32768)
 
 	for {
@@ -278,7 +333,7 @@ func recvUDPMessages(conn *net.UDPConn, outchan chan *Endpoint) {
 }
 
 // WSSDDiscover performs WS-Discovery for scanner devices
-func WSSDDiscover(outchan chan *Endpoint) {
+func WSSDDiscover(outchan chan Endpoint) {
 	var conns []*net.UDPConn
 
 	// Create sockets, one per interface
