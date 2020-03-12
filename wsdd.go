@@ -122,7 +122,6 @@ func parseHosted(elements []*XMLElement) []string {
 	var urls []string
 
 	for _, elem := range elements {
-		LogDebug("H: %s %s", elem.Path, elem.Text)
 		switch elem.Path {
 		case "/s:Envelope/s:Body/mex:Metadata/mex:MetadataSection/devprof:Relationship/devprof:Hosted/devprof:Types":
 			types = elem.Text
@@ -347,6 +346,9 @@ func WSSDDiscover(outchan chan Endpoint) {
 		if !ip4 {
 			continue
 		}
+
+		// Note, on IPv6 WSSD works with link local
+		// addresses only
 		if ip4 || addr.IP.IsLinkLocalUnicast() {
 			proto := "udp4"
 			if !ip4 {
