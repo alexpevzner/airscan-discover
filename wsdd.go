@@ -9,10 +9,12 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -79,7 +81,7 @@ const getMetadataTemplate = `<?xml version="1.0" ?>
 `
 
 // ifAddrs returns slice of addresses of all network interfaces
-func IfAddrs() []*net.UDPAddr {
+func ifAddrs() []*net.UDPAddr {
 	var addrs []*net.UDPAddr
 
 	interfaces, _ := net.Interfaces()
@@ -89,19 +91,56 @@ func IfAddrs() []*net.UDPAddr {
 		}
 
 		ifaddrs, _ := iface.Addrs()
-		zone := fmt.Sprintf("%d", iface.Index)
 		for _, ifaddr := range ifaddrs {
 			addr := &net.UDPAddr{
-				IP: ifaddr.(*net.IPNet).IP,
-			}
-			if addr.IP.To4() == nil && addr.IP.IsLinkLocalUnicast() {
-				addr.Zone = zone
+				IP:   ifaddr.(*net.IPNet).IP,
+				Zone: iface.Name,
 			}
 			addrs = append(addrs, addr)
 		}
 	}
 
 	return addrs
+}
+
+// fixURLZone appends zone to address literal, if address
+// is IPv6 link-local unicast
+func fixIpv6URLZone(rawurl, zone string) (string, error) {
+	// Parse URL
+	parsed, err := url.Parse(rawurl)
+	if err != nil {
+		return "", err
+	}
+	if !parsed.IsAbs() {
+		return "", errors.New("Invalid URL: not absolute")
+	}
+
+	// Split address to host and port
+	var host, port string
+	if i := strings.LastIndexByte(parsed.Host, ':'); i < 0 {
+		host = parsed.Host
+	} else {
+		host = parsed.Host[:i]
+		port = parsed.Host[i+1:]
+	}
+
+	// For IPv4 address we don't need to do something
+	if !strings.HasPrefix(host, "[") {
+		return rawurl, nil
+	}
+
+	// Parse IPv6 addr
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	if ip == nil {
+		return "", errors.New("Invalid URL: bad IPv6 address")
+	}
+
+	if ip.IsLinkLocalUnicast() {
+		parsed.Host = fmt.Sprintf("[%s%%%s]:%s", ip, zone, port)
+		return parsed.String(), nil
+	} else {
+		return rawurl, nil
+	}
 }
 
 // parseHosted parses devprof:Hosted section of the device metadata:
@@ -232,7 +271,7 @@ func getMetadata(log *LogMessage, address, xaddr string) []Endpoint {
 }
 
 // handleUDPMessage handles received UDP message
-func handleUDPMessage(log *LogMessage, msg []byte, outchan chan Endpoint) {
+func handleUDPMessage(log *LogMessage, msg []byte, zone string, outchan chan Endpoint) {
 	var action, address, types string
 	var xaddrs []string
 
@@ -251,7 +290,12 @@ func handleUDPMessage(log *LogMessage, msg []byte, outchan chan Endpoint) {
 		case "/s:Envelope/s:Body/d:ProbeMatches/d:ProbeMatch/d:Types":
 			types = elem.Text
 		case "/s:Envelope/s:Body/d:ProbeMatches/d:ProbeMatch/d:XAddrs":
-			xaddrs = append(xaddrs, elem.Text)
+			url, err := fixIpv6URLZone(elem.Text, zone)
+			if err != nil {
+				log.Debug("%s: %s", elem.Text, err)
+			} else {
+				xaddrs = append(xaddrs, url)
+			}
 		case "/s:Envelope/s:Body/d:ProbeMatches/d:ProbeMatch/a:EndpointReference/a:Address":
 			address = elem.Text
 		}
@@ -311,12 +355,18 @@ func handleUDPMessage(log *LogMessage, msg []byte, outchan chan Endpoint) {
 	}
 
 	for endpoint := range endpoints {
-		outchan <- endpoint
+		url, err := fixIpv6URLZone(endpoint.URL, zone)
+		if err != nil {
+			log.Debug("%s: %s", endpoint.URL, err)
+		} else {
+			endpoint.URL = url
+			outchan <- endpoint
+		}
 	}
 }
 
 // recvUDPMessages receives and handles UDP messages
-func recvUDPMessages(conn *net.UDPConn, outchan chan Endpoint) {
+func recvUDPMessages(conn *net.UDPConn, zone string, outchan chan Endpoint) {
 	buf := make([]byte, 32768)
 
 	for {
@@ -326,7 +376,7 @@ func recvUDPMessages(conn *net.UDPConn, outchan chan Endpoint) {
 
 			LogDebug("%s: UDP message received", from)
 			log := LogBegin(fmt.Sprintf("%s", from))
-			handleUDPMessage(log, msg, outchan)
+			handleUDPMessage(log, msg, zone, outchan)
 		}
 	}
 }
@@ -334,14 +384,15 @@ func recvUDPMessages(conn *net.UDPConn, outchan chan Endpoint) {
 // WSSDDiscover performs WS-Discovery for scanner devices
 func WSSDDiscover(outchan chan Endpoint) {
 	var conns []*net.UDPConn
+	var zones []string
 
 	// Create sockets, one per interface
 	LogDebug("Interface addresses:")
-	for _, addr := range IfAddrs() {
+	for _, addr := range ifAddrs() {
 		LogDebug("  %s", addr.IP)
 	}
 
-	for _, addr := range IfAddrs() {
+	for _, addr := range ifAddrs() {
 		ip4 := addr.IP.To4() != nil
 		if !ip4 {
 			continue
@@ -359,13 +410,14 @@ func WSSDDiscover(outchan chan Endpoint) {
 
 			if conn != nil {
 				conns = append(conns, conn)
+				zones = append(zones, addr.Zone)
 			}
 		}
 	}
 
 	// Start receivers
-	for _, conn := range conns {
-		go recvUDPMessages(conn, outchan)
+	for i, conn := range conns {
+		go recvUDPMessages(conn, zones[i], outchan)
 	}
 
 	// Send Probe requests
