@@ -387,19 +387,17 @@ func WSSDDiscover(outchan chan Endpoint) {
 	var zones []string
 
 	// Create sockets, one per interface
+	addrs := ifAddrs()
+
 	LogDebug("Interface addresses:")
-	for _, addr := range ifAddrs() {
+	for _, addr := range addrs {
 		LogDebug("  %s", addr.IP)
 	}
 
-	for _, addr := range ifAddrs() {
-		ip4 := addr.IP.To4() != nil
-		if !ip4 {
-			continue
-		}
-
+	for _, addr := range addrs {
 		// Note, on IPv6 WSSD works with link local
 		// addresses only
+		ip4 := addr.IP.To4() != nil
 		if ip4 || addr.IP.IsLinkLocalUnicast() {
 			proto := "udp4"
 			if !ip4 {
@@ -438,6 +436,7 @@ func WSSDDiscover(outchan chan Endpoint) {
 
 			msg := fmt.Sprintf(probeTemplate, u)
 			conn.WriteTo([]byte(msg), dest)
+			LogDebug("%s: UDP message sent", dest)
 		}
 
 		time.Sleep(250 * time.Millisecond)
