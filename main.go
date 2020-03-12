@@ -46,7 +46,7 @@ func main() {
 	c := make(chan Endpoint)
 	t := time.NewTimer(2500 * time.Millisecond)
 
-	var endpoints []Endpoint
+	endpoints := make(map[Endpoint]struct{})
 
 	go DNSSdDiscover(c)
 	go WSSDDiscover(c)
@@ -55,7 +55,7 @@ loop:
 	for {
 		select {
 		case endpoint := <-c:
-			endpoints = append(endpoints, endpoint)
+			endpoints[endpoint] = struct{}{}
 		case <-t.C:
 			break loop
 		}
@@ -66,7 +66,7 @@ loop:
 		fmt.Printf("\n")
 	}
 	fmt.Printf("[devices]\n")
-	for _, endpoint := range endpoints {
+	for endpoint := range endpoints {
 		line := fmt.Sprintf("%q = %s", endpoint.Name, endpoint.URL)
 		if endpoint.Proto != "" {
 			line += ", " + endpoint.Proto
