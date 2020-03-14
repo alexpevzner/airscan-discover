@@ -304,11 +304,13 @@ func handleUDPMessage(log *LogMessage, msg []byte, zone string, outchan chan End
 		case "/s:Envelope/s:Body/d:ProbeMatches/d:ProbeMatch/d:Types":
 			types = elem.Text
 		case "/s:Envelope/s:Body/d:ProbeMatches/d:ProbeMatch/d:XAddrs":
-			url, err := fixIpv6URLZone(elem.Text, zone)
-			if err != nil {
-				log.Debug("%s: %s", elem.Text, err)
-			} else {
-				xaddrs = append(xaddrs, url)
+			for _, url := range strings.Fields(elem.Text) {
+				url, err := fixIpv6URLZone(url, zone)
+				if err != nil {
+					log.Debug("%s: %s", elem.Text, err)
+				} else {
+					xaddrs = append(xaddrs, url)
+				}
 			}
 		case "/s:Envelope/s:Body/d:ProbeMatches/d:ProbeMatch/a:EndpointReference/a:Address":
 			address = elem.Text
