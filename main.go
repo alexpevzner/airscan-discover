@@ -19,6 +19,7 @@ const usage = `Usage:
 
 Options are:
     -d   enable debug mode
+    -t   enable protocol trace
     -h   print help page
 `
 
@@ -33,6 +34,9 @@ func main() {
 		switch arg {
 		case "-d":
 			Debug = true
+		case "-t":
+			Debug = true
+			Trace = true
 		case "-h":
 			fmt.Printf(usage, os.Args[0])
 			os.Exit(0)

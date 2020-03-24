@@ -206,6 +206,8 @@ func getMetadata(log *LogMessage, address, xaddr string) []Endpoint {
 	resp, err := http.Post(xaddr, "application/soap+xml; charset=utf-8",
 		bytes.NewBuffer(([]byte)(msg)))
 
+	LogTrace("http-request", []byte(msg))
+
 	if err != nil {
 		log.Debug("HTTP: %s", err)
 		return nil
@@ -218,6 +220,8 @@ func getMetadata(log *LogMessage, address, xaddr string) []Endpoint {
 		log.Debug("HTTP: %s", err)
 		return nil
 	}
+
+	LogTrace("http-response", response)
 
 	// Parse response XML
 	elements, err := XMLDecode(wsddNsMap, bytes.NewBuffer(response))
@@ -386,6 +390,8 @@ func recvUDPMessages(conn *net.UDPConn, zone string, outchan chan Endpoint) {
 			msg := buf[:n]
 
 			LogDebug("%s: UDP message received", from)
+			LogTrace(fmt.Sprintf("udp-from-%s", from), msg)
+
 			log := LogBegin(fmt.Sprintf("%s", from))
 			handleUDPMessage(log, msg, zone, outchan)
 			log.Commit()
@@ -449,6 +455,7 @@ func WSSDDiscover(outchan chan Endpoint) {
 			msg := fmt.Sprintf(probeTemplate, u)
 			conn.WriteTo([]byte(msg), dest)
 			LogDebug("%s: UDP message sent", dest)
+			LogTrace(fmt.Sprintf("udp-to-%s", dest), []byte(msg))
 		}
 
 		time.Sleep(250 * time.Millisecond)

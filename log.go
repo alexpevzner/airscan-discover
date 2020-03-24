@@ -8,13 +8,28 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
 	"fmt"
 	"os"
+	"sync"
 )
 
 // Debug enables or disables debugging
 var Debug = false
+
+// Trace enables or disables protocol trace
+var Trace = true
+
+// Trace file name
+const traceName = "trace.tar"
+
+// Trace file handle, opened on demand
+var (
+	traceFile  *tar.Writer
+	traceLock  sync.Mutex
+	traceIndex int
+)
 
 // LogMessage represents a multiline log message
 type LogMessage struct {
@@ -52,6 +67,44 @@ func LogBegin(prefix string) *LogMessage {
 	return &LogMessage{
 		prefix: prefix,
 	}
+}
+
+// Add record to the protocol trace
+func LogTrace(name string, data []byte) {
+	// Trace enabled?
+	if !Trace {
+		return
+	}
+
+	// Acquire trace lock
+	traceLock.Lock()
+	defer traceLock.Unlock()
+
+	// Open trace file on demand
+	if traceFile == nil {
+		file, err := os.OpenFile(traceName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			LogError("%s: %s", traceName, err)
+			return
+		}
+
+		traceFile = tar.NewWriter(file)
+	}
+
+	// Build full name
+	name = fmt.Sprintf("%.3d-%s.xml", traceIndex, name)
+	traceIndex++
+
+	// Write file header and data
+	hdr := &tar.Header{
+		Name: name,
+		Mode: 0644,
+		Size: int64(len(data)),
+	}
+
+	traceFile.WriteHeader(hdr)
+	traceFile.Write(data)
+	traceFile.Flush()
 }
 
 // Debug appends line to the LogMessage
