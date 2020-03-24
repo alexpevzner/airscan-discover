@@ -69,13 +69,14 @@ const probeTemplate = `<?xml version="1.0" ?>
 
 // getMetadataTemplate represents a Get Metadata message template
 const getMetadataTemplate = `<?xml version="1.0" ?>
-<s:Envelope xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+<s:Envelope xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:mex="http://schemas.xmlsoap.org/ws/2004/09/mex">
 	<s:Header>
 		<a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/Get</a:Action>
 		<a:MessageID>urn:uuid:%s</a:MessageID>
 		<a:To>%s</a:To>
 	</s:Header>
 	<s:Body>
+		<mex:Get/>
 	</s:Body>
 </s:Envelope>
 `
