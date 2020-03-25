@@ -71,13 +71,14 @@ func DNSSdDiscover(out chan Endpoint) {
 				}
 			}
 
+			port := uint16(service.Port)
 			if addr.To4() != nil {
-				endpoint.URL = fmt.Sprintf("http://%s:%d/%s", addr, service.Port, rs)
+				endpoint.URL = fmt.Sprintf("http://%s:%d/%s", addr, port, rs)
 			} else if addr.IsLinkLocalUnicast() {
 				endpoint.URL = fmt.Sprintf("http://[%s%%25%d]:%d/%s", addr,
-					service.Interface, service.Port, rs)
+					service.Interface, port, rs)
 			} else {
-				endpoint.URL = fmt.Sprintf("http://[%s]:%d/%s", addr, service.Port, rs)
+				endpoint.URL = fmt.Sprintf("http://[%s]:%d/%s", addr, port, rs)
 			}
 
 			out <- endpoint
