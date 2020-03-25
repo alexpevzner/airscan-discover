@@ -74,6 +74,7 @@ const getMetadataTemplate = `<?xml version="1.0" ?>
 		<a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/Get</a:Action>
 		<a:MessageID>urn:uuid:%s</a:MessageID>
 		<a:To>%s</a:To>
+		<a:ReplyTo>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:ReplyTo>
 	</s:Header>
 	<s:Body>
 		<mex:Get/>
