@@ -4,5 +4,5 @@ github.com/godbus/dbus/v5 v5.0.3 h1:ZqHaoEF7TBzh4jzPmqVhE/5A1z9of6orkAe5uHoAeME=
 github.com/godbus/dbus/v5 v5.0.3/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
 github.com/google/uuid v1.1.1 h1:Gkbcsh/GbpXz7lPftLA3P6TYMwjCLYm83jiFQZF/3gY=
 github.com/google/uuid v1.1.1/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/holoplot/go-avahi v0.0.0-20200228151633-f16a248ee359 h1:ekMk+XMDQeU6+atEaXOCCWJDWXf1QsavGuvtWaL5+sE=
-github.com/holoplot/go-avahi v0.0.0-20200228151633-f16a248ee359/go.mod h1:UVLO1hQkLAXpZDWt2qnPuHxGRZf8Yrh2fd2J44b+dxM=
+github.com/holoplot/go-avahi v0.0.0-20200330081342-cc1f23e0ff03 h1:M7YYdMFklIFtwGt+nIpXnI6JetNqeEc5Hj5xdBDeggQ=
+github.com/holoplot/go-avahi v0.0.0-20200330081342-cc1f23e0ff03/go.mod h1:UVLO1hQkLAXpZDWt2qnPuHxGRZf8Yrh2fd2J44b+dxM=
