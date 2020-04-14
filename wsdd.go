@@ -55,14 +55,16 @@ var (
 
 // probe represents a Probe message template
 const probeTemplate = `<?xml version="1.0" ?>
-<s:Envelope xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery" xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+<s:Envelope xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:wsdp="http://schemas.xmlsoap.org/ws/2006/02/devprof">
 	<s:Header>
 		<a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</a:Action>
 		<a:MessageID>urn:uuid:%s</a:MessageID>
 		<a:To>urn:schemas-xmlsoap-org:ws:2005:04:discovery</a:To>
 	</s:Header>
 	<s:Body>
-		<d:Probe/>
+		<d:Probe>
+			<d:Types>wsdp:Device</d:Types>
+		</d:Probe>
 	</s:Body>
 </s:Envelope>
 `
