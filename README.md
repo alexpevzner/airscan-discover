@@ -4,6 +4,8 @@ Discovery tool for sane-airscan compatible devices
 This small tool discovers scanner devices, compatible with [sane-airscan](https://github.com/alexpevzner/sane-airscan)
 backend.
 
+**This tool is deprecated. Sane-airscan now comes with the similar tool.**
+
 ## Building
 
 Assuming you have a Go compiler, execute the following command:
