@@ -23,5 +23,3 @@ It will download everything it need, build an executable and save it to `$HOME/g
 
 It will print a list of discovered devices in a form suitable for adding to the `/etc/sane.d/airscan.conf` configuration
 file.
-
-Note, current version of sane-airscan doesn't support WSD devices yet, but this support is coming soon.
